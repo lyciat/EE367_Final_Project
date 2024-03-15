@@ -12,30 +12,36 @@ class CameraRespFunct:
             exposureTimes(list): list of exposure times for image array
         '''  
 
-        self.images = self.create_imgArr(path)                          # self.images = image array
-        self.times = np.array(exposureTimes, dtype=np.float32)          # self.times = exposure times array
+        self.images = self.create_imgArr(path)                          
+        self.times = np.array(exposureTimes, dtype=np.float32) 
 
-        self.N = len(self.images)                                       # self.N = number of images
-        self.H = len(self.images[0])                                    # self.H = height of images (pixels)
-        self.W = len(self.images[0][0])                                 # self.W = width of images (pixels)
+        # self.N = len(self.images)   
+        # self.H = len(self.images[0])
+        # self.W = len(self.images[0][0]) 
+        self.N, self.H, self.W, c = self.images.shape
 
-        self.l = l                                                      # self.l = smoothing factor, lambda
-        self.Bj = np.log(self.times)                                    # self.Bj = log of exposure times
+        self.l = l
+        self.Bj = np.log(self.times)
 
         alignMTB = cv2.createAlignMTB()
         alignMTB.process(self.images, self.images)
     
     def create_imgArr(self, path):
-        
+        """
+        Grabs the images given the path to the folder containing the images
+        """
         image_list = [] 
         
-        for i, filename in enumerate(glob.glob(path + "\\" + '*.jpg')): 
+        for i, _ in enumerate(glob.glob(path + "\\" + '*.jpg')): 
             im = cv2.imread(path + '\\' + str(i) + '.jpg')
             im = cv2.rotate(im, cv2.ROTATE_90_CLOCKWISE)
             image_list.append(im)
         return np.array(image_list)
           
     def display_OriginalImages(self):
+        """
+        Displays the original images
+        """
         fig, axs = plt.subplots(1, self.N, figsize = (20,4))
         fig.suptitle('Original Images')
         for i in range(self.N):
@@ -45,6 +51,10 @@ class CameraRespFunct:
             axs[i].set_title("Exposure Time = %.3f" % (exp), fontsize = 10)
         
     def w_funct(self, z):
+        """
+        Weighting function, given a z, weighs it accordingly 
+        to how close it is to zmid
+        """
         Zmin = 0 
         Zmax = 255 
         Zmid = (Zmax+Zmin)//2
@@ -63,21 +73,20 @@ class CameraRespFunct:
 
  
         
-    def getSamples(self):
-    
+    def get_samples(self):
+        """
+        Gets the sampled pixel values needed to perform SVD
+        """
         numPixels = self.H * self.W
         numSamples = 50
-
         stepSize = int(np.floor(numPixels / numSamples))
-
+        
+        # get the sampled pixel idxs
         samplePixels = np.arange(0,numPixels,stepSize)[:numSamples]
         
         # get flatten image 
-        # self.flattenedImages = np.array(self.images.reshape(self.N, 3, numPixels),dtype=np.uint8)
-        self.flattenedImages = np.zeros((self.N, 3, numPixels),dtype=np.uint8)
-        for n in range(self.N):
-            for c in range(3):
-                self.flattenedImages[n,c] = self.images[n][:,:,c].flatten()
+        self.flattenedImages = np.array(self.images.reshape(self.N, numPixels, 3),dtype=np.uint8)
+        self.flattenedImages = self.flattenedImages.transpose(0,2,1)
 
         # get the sampled pixel values 
         self.ZR = self.flattenedImages[:,2,samplePixels].T
@@ -88,14 +97,14 @@ class CameraRespFunct:
     def gsolve(self,Z):
         # this function is a python version of the one provided by Debevec's paper. 
         '''        
-        solve for imaging system response function 
+        Solve for camera system response function 
 
         Given a set of pixel values observed for several pixels 
         in several images with different exposure times, 
 
-        this funcction returns the imaging system's response function g as well as the log film irradiance values 
+        this function returns the imaging system's response function g 
+        as well as the log film irradiance values 
         for the observed pixels 
-
 
         Inputs: 
         Z(i,j) : pixel values of pixel locations number i in image j 
@@ -135,7 +144,7 @@ class CameraRespFunct:
             A[k,i+2] = self.l*self.w_funct(i+1)
             k +=1
         
-        # solve the system using Singular Value Decomposition(SVD)
+        # solve the system using SVD
         x = np.linalg.lstsq(A,b,rcond=None) 
         
         x = x[0]
@@ -144,9 +153,11 @@ class CameraRespFunct:
         
         return g, lE
     
-    def getCameraResp(self):
-
-        self.getSamples()
+    def get_camera_resp(self):
+        """
+        Gets the camera response function for each of the channels
+        """
+        self.get_samples()
         
         self.gR, self.lER = self.gsolve(self.ZR)
         self.gG, self.lEG = self.gsolve(self.ZG)
@@ -155,51 +166,33 @@ class CameraRespFunct:
         gList = [self.gR, self.gG, self.gB]
         lEList = [self.lER, self.lEG, self.lEB]
 
-        return gList, lEList
+        return gList, lEList 
     
-    def recover_HDR_RadianceMap(self):
-        m = np.zeros((self.flattenedImages.shape[1:]))
-        wsum = np.zeros(self.flattenedImages.shape[1:])
-        hdr = np.zeros(self.flattenedImages.shape[1:])
+    def get_ldr(self):
+        rad_R = np.exp(self.gR)
+        rad_G = np.exp(self.gG)
+        rad_B = np.exp(self.gB)
+
+        rad_R /= np.max(rad_R)
+        rad_G /= np.max(rad_G)
+        rad_B /= np.max(rad_B)
         
-        lnDt = np.log(self.times)
-
-        for i in range(self.N):
-
-            wij_B = self.w_funct(self.flattenedImages[i,2])
-            wij_G = self.w_funct(self.flattenedImages[i,1])
-            wij_R = self.w_funct(self.flattenedImages[i,0])
-            
-            wsum[0,:] += wij_B
-            wsum[1,:] += wij_G
-            wsum[2,:] += wij_R
-            
-            m2 = np.subtract(self.gB[self.flattenedImages[i,0]],lnDt[i])
-            m1 = np.subtract(self.gG[self.flattenedImages[i,1]],lnDt[i])
-            m0 = np.subtract(self.gR[self.flattenedImages[i,2]],lnDt[i])
-    
-            hdr[0] += np.multiply(m0,wij_B)
-            hdr[1] += np.multiply(m1,wij_G)
-            hdr[2] += np.multiply(m2,wij_R)
-
-        hdr = np.divide(hdr,wsum)
-        hdr = np.exp(hdr)
-        hdr = np.reshape(np.transpose(hdr), (self.H,self.W,3))
-                    
-        self.imgf32 = (hdr/np.amax(hdr)*255).astype(np.float32)
-        plt.figure(constrained_layout=False,figsize=(10,10))
-        plt.title("fused HDR radiance map", fontsize=20)
-        plt.imshow(self.imgf32)  
-
-    def plotResponseCurves(self, axs, r, c): 
-
+        ldr = np.zeros_like(self.images, dtype=np.float64)
+        for i, n in enumerate(self.images):
+            ### CV2 is BGR 
+            ldr[i,:,:,2] = rad_B[n[:,:,0]]
+            ldr[i,:,:,1] = rad_G[n[:,:,1]]
+            ldr[i,:,:,0] = rad_R[n[:,:,2]]
+        return ldr
+        
+    def plot_response(self, axs, r, c): 
         px = list(range(0,256))
         axs[r,c].set_title(f"Inverse Response Curve g(Z_ij), lambda = {self.l}")
         axs[r,c].plot(px,np.exp(self.gR),'r')
         axs[r,c].plot(px,np.exp(self.gB),'b')
         axs[r,c].plot(px,np.exp(self.gG),'g')
         axs[r,c].set_ylabel("log Exposure X")
-        axs[r,c].set_xlabel("Pixel value Z")      
+        axs[r,c].set_xlabel("Pixel value Z")
 
 if __name__ == "__main__":
     path = r"C:\Users\audre\OneDrive\Documents\GitHub\EE367_Final_Project\new_images"
@@ -208,8 +201,8 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(2,3, figsize = (20, 10))
     for i, l in enumerate(lambdas):
         crf = CameraRespFunct(path, l, exposures)
-        g_list, lE_list = crf.getCameraResp()
+        g_list, lE_list = crf.get_camera_resp()
         r = i // 3
         c = i % 3
-        crf.plotResponseCurves(axs, r, c)
-    plt.show()
+        crf.plot_response(axs, r, c)
+    plt.show()                
