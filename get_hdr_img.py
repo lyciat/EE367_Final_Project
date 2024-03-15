@@ -1,6 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+def get_ldr(crf,images_arr):
+    rad_R = np.exp(crf.gR)
+    rad_G = np.exp(crf.gG)
+    rad_B = np.exp(crf.gB)
+
+    rad_R /= np.max(rad_R)
+    rad_G /= np.max(rad_G)
+    rad_B /= np.max(rad_B)
+    
+    ldr = np.zeros_like(images_arr, dtype=np.float64)
+    for i, n in enumerate(images_arr):
+        ### CV2 is BGR 
+        ldr[i,:,:,2] = rad_B[n[:,:,0]]
+        ldr[i,:,:,1] = rad_G[n[:,:,1]]
+        ldr[i,:,:,0] = rad_R[n[:,:,2]]
+    return ldr
+
 def get_hdr(ldr_imgs, exposures):
     """
     From retrieved RAW images, get an HDR image using the combined

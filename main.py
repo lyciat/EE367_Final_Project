@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from camera_resp import CameraRespFunct
-from get_hdr_img import get_hdr
+from get_hdr_img import get_hdr, get_ldr
 from tonemapping import my_tonemap
 
 def df_to_numpy(df,key_val):
@@ -14,13 +14,15 @@ def get_exposures(xlx_path, key_val):
     exp_db = df_to_numpy(df,key_val)
     return exp_db
 
-def hdr_pipeline(key_val:str, xlx_path:str,path:str,l:int):
-    exposures = get_exposures(xlx_path, key_val)
-    crf = CameraRespFunct(path, l, exposures)
+def hdr_pipeline(key_val:str, xlx_path:str,path:str,path_rsp:str,key_val_rsp:str,l:int):
+    exposures = get_exposures(xlx_path, key_val_rsp)
+    crf = CameraRespFunct(path_rsp, l, exposures)
     print('Getting Camera Response')
     g_list, lE_list = crf.get_camera_resp()
     print('Getting back RAW Images from Camera Response')
-    ldrs = crf.get_ldr()
+    new_exposures = get_exposures(xlx_path, key_val)
+    new_crf = CameraRespFunct(path,l, new_exposures)
+    ldrs = get_ldr(crf, new_crf.images)
     # fig,axs=plt.subplots(1,len(ldrs))
     # for i, ld in enumerate(ldrs):
     #     axs[i].imshow(ld)
@@ -40,9 +42,11 @@ def hdr_pipeline(key_val:str, xlx_path:str,path:str,l:int):
 
 if __name__ == "__main__":
     path = r"HooverTower/Hoover Tower"
+    path_rsp = r"new_images"
     xlx_path = "Exposure_Times.xlsx"
     key_val = 'HooverTower'
-    hdr_pipeline(key_val, xlx_path,path,1000)
+    key_val_rsp = 'Munger'
+    hdr_pipeline(key_val, xlx_path,path,path_rsp,key_val_rsp,1000)
     # lambdas = np.array([0.01, 0.1, 1, 10, 1000,10000])
     # exposures = [1/1, 1/5, 1/13, 1/25, 1/60, 1/100]
     # fig, axs = plt.subplots(2,3, figsize = (20, 10))
