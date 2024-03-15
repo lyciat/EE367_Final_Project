@@ -47,13 +47,3 @@ if __name__ == "__main__":
     key_val = 'HooverTower'
     key_val_rsp = 'Munger'
     hdr_pipeline(key_val, xlx_path,path,path_rsp,key_val_rsp,1000)
-    # lambdas = np.array([0.01, 0.1, 1, 10, 1000,10000])
-    # exposures = [1/1, 1/5, 1/13, 1/25, 1/60, 1/100]
-    # fig, axs = plt.subplots(2,3, figsize = (20, 10))
-    # for i, l in enumerate(lambdas):
-    #     crf = CameraRespFunct(path, l, exposures)
-    #     g_list, lE_list = crf.getCameraResp()
-    #     r = i // 3
-    #     c = i % 3
-    #     crf.plotResponseCurves(axs, r, c)
-    # plt.show()
